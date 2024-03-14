@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebRTC Receiver</title>
+</head>
+<body>
+    <video id="remoteVideo" autoplay playsinline></video>
+    <textarea id="offer"></textarea>
+    <button onclick="startAnswer()">Answer</button>
+    <textarea id="candidate"></textarea>
+    <button onclick="addCandidate()">Add Candidate</button>
+    <script>
+        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+
+        const ws = new WebSocket('ws://127.0.0.1:6789');
+        ws.onopen = () => console.log('Connected to the signaling server');
+        ws.onmessage = event => {
+            const message = JSON.parse(event.data);
+            if (message.type === 'offer') {
+                document.getElementById('offer').value = JSON.stringify(message.offer);
+            } else if (message.type === 'candidate') {
+                document.getElementById('candidate').value = JSON.stringify(message.candidate);
+            }
+        };
+
+        function send(message) {
+            ws.send(JSON.stringify(message));
+        }
+
+        pc.ontrack = event => {
+            document.getElementById('remoteVideo').srcObject = event.streams[0];
+        };
+
+        pc.onicecandidate = event => {
+            if (event.candidate) {
+                console.log('New ICE candidate:', JSON.stringify(event.candidate));
+            }
+        };
+
+        function startAnswer() {
+            const offerDesc = new RTCSessionDescription(JSON.parse(document.getElementById('offer').value));
+            pc.setRemoteDescription(offerDesc)
+                .then(() => pc.createAnswer())
+                .then(answer => pc.setLocalDescription(answer))
+                .then(() => console.log('Answer:', JSON.stringify(pc.localDescription)))
+                .then(() => send({ type: 'answer', answer: JSON.stringify(pc.localDescription) }))
+                .catch(error => console.error(error));
+        }
+
+        function addCandidate() {
+            const candidate = new RTCIceCandidate(JSON.parse(document.getElementById('candidate').value));
+            pc.addIceCandidate(candidate).catch(error => console.error(error));
+        }
+    </script>
+</body>
+</html>
